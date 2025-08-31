@@ -1,56 +1,96 @@
-# Tiny Tapeout project information
 project:
-  title:        "gds build test"      # Project title
-  author:       "pitrosugi"      # Your name
-  discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "test for gds"      # One line description of what your project does
-  language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
-  clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
+  name: "tt_um_pitrosugi_pdm_sc"
+  owner: "pitrosugi"
+  description: >
+    PDM sigma-delta modulator, Class-D complementary driver with deadtime,
+    switched-capacitor 2-phase non-overlap clock generator, 1-bit SDM CIC decimator,
+    and SPI register/FIFO interface for Raspberry Pi Pico (UAC2 handled off-chip).
+  foundry: "sky130"
+  process: "SKY130A"
+  tiles: 1
+  top_module: "tt_um_sugiura_pdm_sc"
 
-  # How many tiles your design occupies? A single tile is about 167x108 uM.
-  tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
-
-  # Your top module name must start with "tt_um_". Make it unique by including your github username:
-  top_module:  "tt_um_example"
-
-  # List your project's source files here.
-  # Source files must be in ./src and you must list each source file separately, one per line.
-  # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
-  source_files:
-    - "project.v"
-
-# The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
-# This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
-  # Inputs
-  ui[0]: ""
-  ui[1]: ""
-  ui[2]: ""
-  ui[3]: ""
-  ui[4]: ""
-  ui[5]: ""
-  ui[6]: ""
-  ui[7]: ""
+  # TinyTapeout 標準入出力
+  clk: "clk"         # 外部クロック（実クロック周波数はシャトルに準拠、パラメータで分周設定可）
+  rst_n: "rst_n"
+  ena: "ena"
 
-  # Outputs
-  uo[0]: ""
-  uo[1]: ""
-  uo[2]: ""
-  uo[3]: ""
-  uo[4]: ""
-  uo[5]: ""
-  uo[6]: ""
-  uo[7]: ""
+  # 8 x input (ui_in[7:0]) - ここでは 1bit ΔΣ入力など
+  ui_in:
+    0: "sdm_in"      # 1-bit ΔΣ A/D のデジタル出力（外付けコンパレータから）
+    1: "unused_in1"
+    2: "unused_in2"
+    3: "unused_in3"
+    4: "unused_in4"
+    5: "unused_in5"
+    6: "unused_in6"
+    7: "unused_in7"
 
-  # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  # 8 x output (uo_out[7:0]) - PDM と SC 制御などを出力
+  uo_out:
+    0: "pdm_out"     # 1-bit PDM (ΣΔ出力)
+    1: "classd_hi"   # クラスD ハイサイド用（補完、デッドタイム付）
+    2: "classd_lo"   # クラスD ローサイド用（補完、デッドタイム付）
+    3: "phi1"        # SC用 2相非重複クロック φ1
+    4: "phi2"        # SC用 2相非重複クロック φ2
+    5: "sw0"         # 外付けアナログスイッチ等の制御
+    6: "sw1"
+    7: "sw2"
 
-# Do not change!
-yaml_version: 6
+  # 8 x bidirectional (uio[7:0]) - SPI を割当て
+  uio:
+    0: "spi_sclk"    # in
+    1: "spi_mosi"    # in
+    2: "spi_miso"    # out
+    3: "spi_cs_n"    # in
+    4: "sw3"         # out（追加の制御線）
+    5: "gpio5"       # reserve
+    6: "gpio6"       # reserve
+    7: "gpio7"       # reserve
+
+constraints:
+  voltage: "3v3"
+  drive: "low"   # TinyTapeoutのI/Oドライブは小さめ（外付けドライバで受ける前提）
+  notes: >
+    Do NOT drive power stages directly. Use proper gate drivers / analog switches.
+    uio_* are tri-stated unless configured as outputs in RTL.
+
+documentation:
+  interfaces:
+    spi:
+      mode: 0
+      max_sclk_hint: "≤ 10 MHz (timing budget dependent on clk parameter)"
+      write: "Reg writes and sample FIFO push"
+      read: "Reg reads and capture of CIC-decimated samples"
+  registers:
+    - addr: 0x00
+      name: VERSION
+      desc: "Read-only version ID"
+    - addr: 0x01
+      name: CTRL
+      desc: "bit0:enable, bit1:mute_pdm, bit2:classd_en, bit3:sc_en"
+    - addr: 0x02
+      name: CLKDIV_AUDIO
+      desc: "Audio sample strobe divider (from clk) for 48k etc."
+    - addr: 0x03
+      name: PDM_OSR
+      desc: "Oversample factor (pdm_clk = clk/(PDM_OSR))"
+    - addr: 0x04
+      name: DEADTIME
+      desc: "Deadtime in pdm_clk cycles for class-D complementary"
+    - addr: 0x05
+      name: SC_DIV
+      desc: "SC base divider (phi toggling rate)"
+    - addr: 0x06
+      name: SC_GAP
+      desc: "Non-overlap gap cycles between phi1 and phi2"
+    - addr: 0x10
+      name: TX_FIFO
+      desc: "Write 16-bit signed PCM (push LSB then MSB); triggers on MSB write"
+    - addr: 0x11
+      name: RX_DATA
+      desc: "Read 16-bit signed PCM from CIC (LSB then MSB)"
+    - addr: 0x12
+      name: STATUS
+      desc: "bit0:tx_empty, bit1:tx_full, bit2:rx_valid, bit3:rx_overrun"
