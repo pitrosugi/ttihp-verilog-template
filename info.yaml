@@ -11,7 +11,7 @@ project:
     and SPI register/FIFO interface for Raspberry Pi Pico (UAC2 handled off-chip).
   foundry: "sky130"
   process: "SKY130A"
-  tiles: 2
+  tiles: 4
   top_module: "tt_um_sugiura_pdm_sc"
 
 pinout:
