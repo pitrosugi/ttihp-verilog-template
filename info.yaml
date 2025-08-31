@@ -1,6 +1,7 @@
 yaml_version: 6
 
 project:
+  title: "UAC2 PDM DAC + DeltaSigma ADC"
   name: "tt_um_pitrosugi_pdm_sc"
   owner: "pitrosugi"
   description: >
